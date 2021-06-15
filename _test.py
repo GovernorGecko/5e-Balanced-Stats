@@ -26,6 +26,7 @@ print(constants)
 
 # Balanced Stats Initialized
 balanced_stats = BalancedStats()
+"""
 balanced_stats.update_settings(
     points_to_spend=constants["POINTS TO SPEND"],
     dice_sides=constants["DICE SIDES"],
@@ -35,6 +36,7 @@ balanced_stats.update_settings(
     minimum_stat=constants["MINIMUM STAT"]
    )
 balanced_stats.set_stats_from_list(constants["STARTING STATS"])
+"""
 
 # Balanced Stats, Set Stats
 for _ in range(0, 5):
