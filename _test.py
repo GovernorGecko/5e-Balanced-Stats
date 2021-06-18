@@ -25,7 +25,11 @@ constants["STARTING STATS"] = [8, 8, 8, 8, 8, 8]
 print(constants)
 
 # Balanced Stats Initialized
-balanced_stats = BalancedStats()
+bs = BalancedStats()
+
+print(bs)
+print(bs.get_stat_lowest())
+
 """
 balanced_stats.update_settings(
     points_to_spend=constants["POINTS TO SPEND"],
@@ -38,6 +42,7 @@ balanced_stats.update_settings(
 balanced_stats.set_stats_from_list(constants["STARTING STATS"])
 """
 
+"""
 # Balanced Stats, Set Stats
 for _ in range(0, 5):
     balanced_stats.create_balanced_stats()
@@ -57,3 +62,4 @@ for _ in range(0, constants["RANDOM TRIES"]):
     points_left_over = points_left_over + balanced_stats.get_points_left()
     balanced_stats.revert_stats_list(constants["STARTING STATS"])
 print(points_left_over / constants["RANDOM TRIES"])
+"""
