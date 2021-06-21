@@ -1,5 +1,4 @@
 """
-
     balancedstats.py
 
     Balanced Stats is used to create Balanced Stat arrays.
@@ -14,7 +13,7 @@
     Stat Rules:
 
     Rolling:
-    4 six sided dice, drop the lowest
+    3+ six sided dice, drop the lowest
 
     Standard Array:
     15, 14, 13, 12, 10, 8
@@ -30,344 +29,326 @@
     Buying 18 is 4 points
 
     Extra rules (homebrew)
-    Buying below < 8 costs 1 point
-
+    Buying below 8 costs 1 point
 """
 
-# Sys
-from enum import Enum
 import math
 import random
 
-# Mines
-from .dice import Dice
-from .ext.rangeddict import RangedDict
-
-
-__all__ = ["BalancedStats"]
-
-
-class BalancedStatsEnum(Enum):
-    """
-    Simple Stats Enum, can be overwritten
-    by a custom one so long as the names stay
-    the same.
-    """
-
-    STRENGTH = 0
-    DEXTERITY = 1
-    CONSTITUTION = 2
-    INTELLIGENCE = 3
-    WISDOM = 4
-    CHARISMA = 5
+from .Dice.src.dice import Dice
+from .RangedDict.src.rangeddict import RangedDict
 
 
 class BalancedStats:
     """
-    Balanced Stats
+    parameters:
+        (optional)
+        int lowest number of dice to drop
+        int maximum sum roll to accept as a stat
+        int minimum sum roll to accept as a stat
+        int of extra points to spend
+        list of ints for starting stats if you wish to not use the
+            standard 8s with 27 points to spend.  Instead it'll calculate
+            points off the given stats and set to spend to 0.
+        list of strings of our stat order
     """
 
-    # Initial Defines
-    DICE_SIDES = 6
-    DICE_TO_ROLL = 4
-    DICE_TO_RETURN = 3
-    MAXIMUM_STAT = 18
-    MINIMUM_STAT = 3
-    POINTS_TO_SPEND = 27
-    STARTING_STATS = [8, 8, 8, 8, 8, 8]
+    # Point Weight
+    __POINT_WEIGHT_DICT = RangedDict()
+    __POINT_WEIGHT_DICT[(3, 13)] = 1
+    __POINT_WEIGHT_DICT[(14, 15)] = 2
+    __POINT_WEIGHT_DICT[(16, 17)] = 3
+    __POINT_WEIGHT_DICT[(18, 18)] = 4
+    __POINT_WEIGHT_MINIMUM = 3
+    __POINT_WEIGHT_MAXIMUM = 18
 
-    # Point Weight Dict
-    POINT_WEIGHT_DICT = RangedDict()
-    POINT_WEIGHT_DICT[(4, 13)] = 1
-    POINT_WEIGHT_DICT[(14, 15)] = 2
-    POINT_WEIGHT_DICT[(16, 17)] = 3
-    POINT_WEIGHT_DICT[(18, 18)] = 4
-    POINT_WEIGHT_DICT[(19, 30)] = 100
+    __slots__ = [
+        "__dice", "__lowest_dice_count", "__maximum_stat", "__minimum_stat",
+        "__points_remaining", "__stats", "__stats_order"
+    ]
 
-    def __init__(self, StatsEnum=BalancedStatsEnum):
-        """
-        Constructor!
-        """
+    def __init__(
+        self, lowest_dice_count=1, maximum_stat=18, minimum_stat=3,
+        extra_points=0, stats=None, stats_order=[
+            "STRENGTH", "CONSTITUTION", "DEXTERITY",
+            "INTELLIGENCE", "WISDOM", "CHARISMA"
+        ]
+    ):
+
+        # Error Check
+        if (
+            not isinstance(lowest_dice_count, int) or
+            lowest_dice_count < 0
+        ):
+            raise ValueError("Lowest Dice Count must be an int >= 0.")
+        elif(
+            not isinstance(maximum_stat, int) or
+            not isinstance(minimum_stat, int) or
+            maximum_stat < minimum_stat or
+            maximum_stat > self.__POINT_WEIGHT_MAXIMUM or
+            minimum_stat < self.__POINT_WEIGHT_MINIMUM
+        ):
+            raise ValueError(
+                f"Maximum/Minimum must be ints and maximum > minimum and "
+                f"between {self.__POINT_WEIGHT_MINIMUM} and "
+                f"{self.__POINT_WEIGHT_MAXIMUM}"
+            )
+        elif(
+            stats is not None and (
+                not isinstance(stats, list) or
+                not isinstance(stats_order, list) or
+                len(stats) != len(stats_order)
+            )
+        ):
+            raise ValueError(
+                "Stats and Stats Order must be lists of the same length."
+            )
+        elif(
+            stats is not None and
+            not all(isinstance(i, int) for i in stats)
+        ):
+            raise ValueError(
+                "Base Stats must be a list of integers."
+            )
+        elif(
+            not isinstance(stats_order, list) or
+            not all(isinstance(i, str) for i in stats_order)
+        ):
+            raise ValueError(
+                "Stats Order must be a list of strings."
+            )
 
         # Set to Default Settings
-        self.update_settings()
+        self.__dice = Dice(6, 3 + lowest_dice_count)
+        self.__lowest_dice_count = lowest_dice_count
+        self.__maximum_stat = maximum_stat
+        self.__minimum_stat = minimum_stat
+        self.__stats_order = stats_order
 
-        # Our Stats
-        self._stats = {}
-        self._stat_order = [
-            StatsEnum.STRENGTH,
-            StatsEnum.DEXTERITY,
-            StatsEnum.CONSTITUTION,
-            StatsEnum.INTELLIGENCE,
-            StatsEnum.WISDOM,
-            StatsEnum.CHARISMA
-           ]
-        self.set_stats_from_list(self.STARTING_STATS)
+        # Calculate points remaining
+        if stats is None:
+            self.__points_remaining = 27 + extra_points
+            self.__stats = [8] * len(stats_order)
+            self.set_stats_to_value(minimum_stat)
+        else:
+            self.__points_remaining = 0
+            self.__stats = stats
 
     def __str__(self):
         """
-        Gets our stats as a string
+        returns:
+            str print out of our current stats
         """
 
-        # Headers
-        headers = "".join(
-            [f'{stat.name[:3]:^10s}' for stat in self._stats.keys()]
+        return(
+            "".join(
+                f'{self.__stats_order[i][0:3]} '
+                f'{self.__stats[i]} '
+                for i in range(0, len(self.__stats_order))
+            )
         )
-
-        # Values
-        values = "".join(
-            [
-                f'{self.get_stat_bonus_string(stat):^10s}'
-                for stat, value in self._stats.items()
-            ]
-        )
-
-        # Return!
-        return f"\n{headers}\n{values}"
 
     def create_balanced_stats(self):
         """
-        Creates a set of balanced stats
+        Sets our stats to a balanced set of stats.
         """
 
-        # First, we need an unbalanced version of our stats
         self.create_unbalanced_stats()
 
-        # Now, we need to make it better!
-        # Gotta get to 0 points!
-        while self._points_left != 0:
+        # Working our way down to 0!
+        while self.__points_remaining != 0:
 
             # Randomly pick a stat
-            random_stat = random.choice(self._stat_order)
+            random_stat = random.choice(self.__stats_order)
 
-            # Iteration and Increment, defaulting to having
-            # extra points to spend
-            iteration = 1
-            increment = True
+            # What value do we want to buy?
+            value_to_buy = self.get_stat_value(random_stat)
+            if self.__points_remaining > 0:
+                value_to_buy += 1
+            else:
+                value_to_buy -= 1
 
-            # Do we not have extra points?  Need to decrement
-            if self._points_left < 0:
-                iteration = -1
-                increment = False
-
-            # How many points do we plan to spend?
-            points_available = self.get_point_weight(
-                self._stats[random_stat], increment
-            )
-
-            # Spend it!
-            if points_available:
-                self._stats[random_stat] = self._stats[random_stat] + iteration
-                self._points_left = self._points_left + points_available
+            # Update our stat.
+            self.set_stat(random_stat, value_to_buy)
 
     def create_unbalanced_stats(self):
         """
-        Creates a set of unbalanced stats, returning the
-        extra points and stats.
+        Sets our stats to an unbalanced set of stats.
         """
 
-        # Get them sterts!
-        unbalanced_stats = self._dice.roll_sum_list(
-            6, self._maximum_stat,
-            self._minimum_stat, self._dice_to_return
-        )
-
-        # Rolls have been completed!  Now we need to figure out
-        # how many points over or under we are.
-        for stat in range(0, len(unbalanced_stats)):
-            self._points_left = self._points_left - self.get_point_weight_diff(
-                unbalanced_stats[stat], self._stats[self._stat_order[stat]]
+        for stat in self.__stats_order:
+            self.set_stat(
+                stat,
+                self.__dice.roll_sum_with_culling(
+                    self.__minimum_stat,
+                    self.__maximum_stat,
+                    self.__lowest_dice_count
+                )
             )
 
-        # Set Stats
-        self.set_stats_from_list(unbalanced_stats)
-
-    def get_lowest_stat(self):
+    def get_point_cost(self, start, end):
         """
-        Gets our Lowest Stat
-        """
-
-        lowest_stat = BalancedStatsEnum.STRENGTH
-        for stat in self._stat_order:
-            if self._stats[stat] < self._stats[lowest_stat]:
-                lowest_stat = stat
-        return lowest_stat
-
-    def get_point_weight(self, initial, increment=False):
-        """
-        Gets the difference in points when moving between two values.
+        parameters:
+            int start stat value
+            int end stat value
+        returns:
+            int of point cost, negative if we have to spend points
+            positive if we get poitns back.
         """
 
-        # Going up?  Returning a negative from the next value up.
+        # Error checking.
         if (
-            increment and (initial + 1) <= self._maximum_stat and
-            self.POINT_WEIGHT_DICT.find_node(initial + 1)
+            not isinstance(start, int) or
+            not isinstance(end, int) or
+            min(start, end) < self.__POINT_WEIGHT_MINIMUM or
+            max(start, end) > self.__POINT_WEIGHT_MAXIMUM
         ):
-            return self.POINT_WEIGHT_DICT[initial + 1] * -1
+            raise ValueError(
+                f"Start/End must be ints and between "
+                f"{self.__POINT_WEIGHT_MINIMUM} and "
+                f"{self.__POINT_WEIGHT_MAXIMUM}"
+            )
 
-        # Going down? Return a positive.
-        elif (
-            not increment and (initial - 1) >= self._minimum_stat and
-            self.POINT_WEIGHT_DICT.find_node(initial)
+        # Point cost between two numbers is the same no matter
+        # what.  So it is easiest to start at our higher number
+        # and go to the lower.  We then add each number cost up.
+        point_cost = 0
+        for i in range(
+            max(start, end),
+            min(start, end),
+            -1
         ):
-            return self.POINT_WEIGHT_DICT[initial]
+            point_cost += self.__POINT_WEIGHT_DICT[i]
 
-        # Not in our range?
-        else:
-            return 0
-
-    def get_point_weight_diff(self, initial, final):
-        """
-        Given two different values, calls GetPointWeight to figure out
-        the total points we need to move from initial to final.
-        """
-
-        # Our Point Weight to return
-        point_weight = 0
-
-        # Iteration and Increment.
-        # If our initial is greater than our new value,
-        # Need to decrement through the stat.
-        if initial > final:
-            iteration = -1
-            increment = False
-        else:
-            iteration = 1
-            increment = True
-
-        # Iterate!
-        for i in range(initial, final, iteration):
-            point_weight = point_weight + self.get_point_weight(i, increment)
+        # If we are increasing stats, we have to spend points.
+        if start < end:
+            point_cost *= -1
 
         # Return!
-        return point_weight
+        return point_cost
 
     def get_points_left(self):
         """
-        Returns how many points we have remaining
-        to spend.
+        returns:
+            int of points remaining to spend
         """
-
-        return self._points_left
-
-    def get_stat(self, stat):
-        """
-        Gets a Stat
-        """
-
-        if stat in BalancedStatsEnum:
-            return self._stats[stat]
-        else:
-            return 0
+        return self.__points_remaining
 
     def get_stat_bonus(self, stat):
         """
-        Gets our Stat Bonus, given a Stat
+        parameters:
+            str stat name in our stat order
+        returns:
+            int bonus of this stat
         """
 
-        stat_value = self.get_stat(stat)
-        if stat_value >= 12 or stat_value <= 9:
-            return math.floor((stat_value - 10) / 2)
-        return 0
+        index = self.get_stat_index(stat)
 
-    def get_stat_bonus_string(self, stat):
-        """
-        Gets a Stat Bonus, as a String
-        """
-        stat_bonus = self.get_stat_bonus(stat)
-        return f"{self.get_stat(stat)} ({stat_bonus})"
+        return math.floor((self.__stats[index] - 10) / 2)
 
-    def get_stats_list(self):
+    def get_stat_detail(self, stat):
         """
-        Gets our stats as a list
+        parameters:
+            str stat name in our stat order
+        returns:
+            str representation of our stat
         """
 
-        return list(self._stats.values())
+        return (
+            f"{stat[0:3]} "
+            f"{self.get_stat_value(stat)} "
+            f"({self.get_stat_bonus(stat)})"
+        )
 
-    def get_stats_list_sorted(self, reversed=True):
+    def get_stat_index(self, stat):
         """
-        Gets our stats as a list, sorted
-        """
-
-        list_of_stats = self.get_stats_list()
-        list_of_stats.sort(reverse=reversed)
-        return list_of_stats
-
-    def revert_stats(self, value):
-        """
-        Given a number, reduces stats to it, returning points.
-        """
-        self.revert_stats_list([value, value, value, value, value, value])
-
-    def revert_stats_list(self, list_of_stats):
-        """
-        Given a list of stats, reduces stats to it, returning points.
+        parameters:
+            str stat name in our stat order
+        returns:
+            int index of the stat in stat order
         """
 
-        # Iterate, getting points back
-        for i in range(0, len(self._stat_order)):
+        if stat not in self.__stats_order:
+            raise ValueError(
+                f"{stat} not found in {self.__stats_order}"
+            )
+        else:
+            return self.__stats_order.index(stat)
 
-            # Get our Stat, Current and Desired Value
-            stat = self._stat_order[i]
-            stat_current_value = self._stats[stat]
-            stat_desired_value = list_of_stats[i]
+    def get_stat_lowest(self):
+        """
+        returns:
+            str of our lowest stat
+        """
+        return self.__stats_order[
+            self.__stats.index(min(self.__stats))
+        ]
 
-            # Was the set successful?  If so, update our points to spend
-            if self.set_stat(stat, stat_desired_value):
-                self._points_left += self.get_point_weight_diff(
-                    stat_current_value, stat_desired_value
-                )
+    def get_stat_value(self, stat):
+        """
+        parameters:
+            str stat name in our stat order
+        returns:
+            int stat value
+        """
+
+        index = self.get_stat_index(stat)
+
+        return self.__stats[index]
+
+    def get_stats(self):
+        """
+        returns:
+            list of our stats
+        """
+        return self.__stats
+
+    def get_stats_sorted(self, reversed=True):
+        """
+        parameters:
+            bool if we should reverse the sort list
+        """
+        stats_sorted = self.__stats
+        stats_sorted.sort(reverse=reversed)
+        return stats_sorted
 
     def set_stat(self, stat, value):
         """
-        Given a stat and value, update it
+        Sets the given stat to the given value.  This updates our
+        points remaining.
+        paramaters:
+            str/int stat name/index in our stat order
+            int value to set the stat to
         """
 
-        # Is this stat value in the allowed range?
-        if value in range(self._minimum_stat, self._maximum_stat + 1):
-            self._stats[stat] = value
-            return True
+        # Error Checking
+        if not isinstance(value, int):
+            raise ValueError("Value must be an int")
+        elif(
+            value > self.__maximum_stat or
+            value < self.__minimum_stat
+        ):
+            return
 
-        # Couldn't do it.
-        return False
+        # Index of the stat in our order.
+        index = self.get_stat_index(stat)
 
-    def set_stats_from_list(self, list_of_stats):
+        # Update the points remaining and stat.
+        self.__points_remaining += self.get_point_cost(
+            self.__stats[index], value
+        )
+        self.__stats[index] = value
+
+    def set_stats_to_value(self, value):
         """
-        Given a list, sets our stats.
-        """
-
-        # Enough vars?
-        if len(list_of_stats) < 6:
-            return False
-
-        # Set
-        for i in range(0, 6):
-            self.set_stat(self._stat_order[i], list_of_stats[i])
-
-    def update_settings(
-        self,
-        points_to_spend=POINTS_TO_SPEND,
-        dice_sides=DICE_SIDES,
-        dice_to_roll=DICE_TO_ROLL,
-        dice_to_return=DICE_TO_RETURN,
-        maximum_stat=MAXIMUM_STAT,
-        minimum_stat=MINIMUM_STAT
-       ):
-        """
-        Update our settings, will default those not passed.
+        paramaters:
+            int value to set to.
         """
 
-        # Set PtS, Dice, and DtR.... ACRONYMS
-        self._points_left = points_to_spend
-        self._dice = Dice(dice_sides, dice_to_roll)
-        self._dice_to_return = dice_to_return
+        # Value an int?
+        if not isinstance(value, int):
+            raise ValueError("Value must be an int.")
 
-        # Maximum and Minimum
-        self._maximum_stat = maximum_stat
-        if minimum_stat <= maximum_stat:
-            self._minimum_stat = minimum_stat
-
-
-# We gotta be included!
-if __name__ == '__main__':
-    pass
+        # Iterate!
+        for stat in self.__stats_order:
+            self.set_stat(stat, value)
