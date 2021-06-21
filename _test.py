@@ -28,7 +28,15 @@ print(constants)
 bs = BalancedStats()
 
 print(bs)
+print(bs.get_points_left())
 print(bs.get_stat_lowest())
+print(bs.get_stat_value("STRENGTH"))
+print(bs.get_stat_bonus("STRENGTH"))
+print(bs.get_stat_detail("STRENGTH"))
+print(bs.get_point_cost(14, 9))
+bs.create_unbalanced_stats()
+print(bs.get_stats())
+print(bs.get_points_left())
 
 """
 balanced_stats.update_settings(

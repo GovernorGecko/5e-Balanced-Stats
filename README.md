@@ -4,3 +4,4 @@
 # ToDo
 - Finish cleaning
 - Able to customize each stat's name?
+- Handing over initial stats?
