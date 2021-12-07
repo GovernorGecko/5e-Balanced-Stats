@@ -21,6 +21,7 @@
     Point Buy:
     Every stat starts at 8, with 27 points to spend.
 
+    DnD 5e rules:
     Buying 9 - 13 is 1 point
     Buying 14 or 15 is 2 points
 
